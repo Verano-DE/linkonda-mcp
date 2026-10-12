@@ -2,7 +2,7 @@
 
 Create and manage [Linkonda](https://linkonda.com) short links from Claude, Claude Code, Cursor, or any other MCP client.
 
-Linkonda records a **total redirect count per link and nothing else** — no IP addresses, geolocation, device data, or referrers. That matters more than usual for an agent, which can generate links in bulk without building a visitor dataset you then have to secure, retain, and answer requests about.
+When a short link is followed, Linkonda counts the click (a total per link, and per variant on an A/B split link) and records nothing about the visitor: no IP address, location, device data or referrer. That matters more than usual for an agent, which can generate links in bulk without building a visitor dataset you then have to secure, retain, and answer requests about.
 
 ## Works without an API key
 
@@ -57,9 +57,9 @@ To use an API key, add it to the same entry:
 | --- | --- | --- |
 | `shorten_link` | Shorten one URL | No |
 | `shorten_links_bulk` | Shorten up to 100 URLs in one request | Yes |
-| `list_links` | List your links with destinations and click counts | Yes |
+| `list_links` | List your 100 most recent links with destinations and click counts | Yes |
 | `update_link` | Change a destination, or pause/resume a link | Yes |
-| `delete_link` | Permanently delete a link | Yes |
+| `delete_link` | Delete a link (can't be undone; its short URL is never reused) | Yes |
 | `get_link_stats` | Total redirect count for a link | No |
 | `check_quota` | Links live vs. plan allowance | No |
 
