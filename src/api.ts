@@ -1,6 +1,16 @@
 /** Thin client over the Linkonda REST API. Mirrors docs/api-requests-reference.md. */
+import { createRequire } from "node:module";
 
 const DEFAULT_BASE_URL = "https://api.linkonda.com";
+
+// `../package.json` resolves the same from src/ under tsx and from dist/ once built (as in index.ts).
+const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
+
+/**
+ * Attribution only: the API records links made through this server as `creation_source: "mcp"` so their
+ * use can be counted. It names the program and its version, nothing about the user, and grants nothing.
+ */
+const CLIENT_HINT = `mcp/${version}`;
 
 export type PlanTier = "anonymous" | "free" | "plus" | "pro" | "enterprise";
 
@@ -133,7 +143,7 @@ export class LinkondaClient {
       );
     }
 
-    const headers: Record<string, string> = { Accept: "application/json" };
+    const headers: Record<string, string> = { Accept: "application/json", "X-Linkonda-Client": CLIENT_HINT };
     if (options.body !== undefined) headers["Content-Type"] = "application/json";
     // When an Authorization header is present the API validates only the key and never falls
     // back to a session, so a bad key fails cleanly instead of acting as someone else.
