@@ -83,14 +83,54 @@ function isSlugRoute(path: string): boolean {
   return /^\/api\/links\/[^/]+/.test(path) && !path.startsWith("/api/links/batch");
 }
 
-function hintFor(
+export const QUOTA_HINT_ANONYMOUS =
+  "Anonymous links are limited per network, and this network has reached the limit (check_quota shows it). A slot frees up when one of them expires. To create more from here, set LINKONDA_API_KEY; API keys need a paid plan (https://linkonda.com/pricing).";
+
+export const QUOTA_HINT_ACCOUNT =
+  "Your plan's limit on active links is reached (check_quota shows the numbers). Paused, expired and deleted links don't count toward it: pause or delete links you no longer need, or move to a plan with a higher limit (https://linkonda.com/pricing).";
+
+export const QUOTA_HINT_RESUME =
+  "Resuming this link would go over your plan's limit on active links (check_quota shows the numbers). Pause or delete another link first, or move to a plan with a higher limit (https://linkonda.com/pricing).";
+
+export const CUSTOM_SLUG_HINT =
+  "Custom short codes are not available on any Linkonda plan, so upgrading won't enable them. Call shorten_link again without slug to get a generated short code.";
+
+/**
+ * Waiting frees no quota slot, so a quota refusal says what does. Resume is told apart from create
+ * by its slug route (it needs another link out of the way); otherwise the API's `tier` wins over
+ * whether a key is set, as in `check_quota`.
+ */
+function quotaHint(tier: string | undefined, hasKey: boolean, path: string): string {
+  if (isSlugRoute(path)) return QUOTA_HINT_RESUME;
+  if (tier === "anonymous") return QUOTA_HINT_ANONYMOUS;
+  if (tier !== undefined || hasKey) return QUOTA_HINT_ACCOUNT;
+  return QUOTA_HINT_ANONYMOUS;
+}
+
+// The daily screening allowance answers 429 with a Retry-After that runs to 00:00 UTC, so "a moment" is wrong there.
+function rateLimitHint(retryAfter: string | null | undefined): string {
+  const s = retryAfter != null && /^\d+$/.test(retryAfter) ? Number(retryAfter) : null;
+  if (s === null) return "Rate limited. Wait a moment before retrying.";
+  if (s <= 90) return `Rate limited. Retry in ${s} ${s === 1 ? "second" : "seconds"}.`;
+  if (s <= 5400) return `Rate limited. Retry in about ${Math.ceil(s / 60)} minutes.`;
+  return `Rate limited. Retry in about ${Math.ceil(s / 3600)} hours.`;
+}
+
+/** Exported so it can be unit-tested without a stub API (backlog 0003). */
+export function hintFor(
   status: number,
   code: string | undefined,
   hasKey: boolean,
   path: string,
+  extra: { tier?: string; retryAfter?: string | null } = {},
 ): string | undefined {
   if (code === "API_KEY_REQUIRES_PAID") {
     return "This API key belongs to a free account. Bearer authentication requires the Plus, Pro, or Enterprise plan — see https://linkonda.com/pricing.";
+  }
+  // Both codes mean the same today: no plan has custom codes, so the API's "requires a paid plan" would send a
+  // Free caller to upgrade for nothing.
+  if (code === "CUSTOM_SLUG_UNSUPPORTED" || code === "CUSTOM_SLUG_REQUIRES_PAID") {
+    return CUSTOM_SLUG_HINT;
   }
   if (status === 401) {
     return hasKey
@@ -101,11 +141,11 @@ function hintFor(
     // A 404 means two different things here. On a slug route the link is missing; anywhere else
     // the route itself is missing, which in practice means the base URL points somewhere wrong.
     return isSlugRoute(path)
-      ? "No link with that short code. Check the slug (the part after the domain — not the full URL); it may also have been deleted or expired."
+      ? "No link with that short code. Check the slug (the part after the domain, not the full URL). A deleted link is not found, update_link and delete_link find only links on your own account, and get_link_stats finds only links on Linkonda's own short-link host, not on a custom domain."
       : "That API endpoint does not exist. Check LINKONDA_API_BASE_URL — it should point at a Linkonda API host (default https://api.linkonda.com).";
   }
   if (status === 429) {
-    return "Rate limited. Wait a moment before retrying.";
+    return code === "QUOTA_EXCEEDED" ? quotaHint(extra.tier, hasKey, path) : rateLimitHint(extra.retryAfter);
   }
   return undefined;
 }
@@ -172,7 +212,12 @@ export class LinkondaClient {
         (typeof payload?.message === "string" && payload.message) ||
         (typeof payload?.error === "string" && payload.error) ||
         `Request failed with HTTP ${response.status}`;
-      throw new LinkondaError(message, response.status, code, hintFor(response.status, code, this.authenticated, path));
+      // `tier` and Retry-After are read only to choose the hint.
+      const hint = hintFor(response.status, code, this.authenticated, path, {
+        tier: typeof payload?.tier === "string" ? payload.tier : undefined,
+        retryAfter: response.headers.get("retry-after"),
+      });
+      throw new LinkondaError(message, response.status, code, hint);
     }
 
     return payload as T;

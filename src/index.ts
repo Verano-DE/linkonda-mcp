@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { LinkondaClient, LinkondaError } from "./api.js";
+import { LinkondaClient, LinkondaError, QUOTA_HINT_ACCOUNT } from "./api.js";
 
 const apiKey = process.env.LINKONDA_API_KEY?.trim() || undefined;
 const client = new LinkondaClient(apiKey, process.env.LINKONDA_API_BASE_URL);
@@ -45,9 +45,9 @@ server.registerTool(
     title: "Shorten a URL",
     description:
       "Create a short link for a URL. Works without an API key (anonymous links expire and are " +
-      "not saved to an account). Linkonda records only a total redirect count per link — no IP " +
-      "addresses, geolocation, device data, or referrers. Use when the user wants a short or " +
-      "shareable URL, or a link for a QR code.",
+      "not saved to an account). When a short link is followed, Linkonda counts the click and " +
+      "records nothing about the visitor: no IP address, location, device data or referrer. Use " +
+      "when the user wants a short or shareable URL, or a link for a QR code.",
     inputSchema: {
       url: z.string().url().describe("The destination URL to shorten. Must be absolute, e.g. https://example.com/page"),
       expiresInDays: z
@@ -56,13 +56,19 @@ server.registerTool(
         .positive()
         .optional()
         .describe(
-          "Optional. Delete the link automatically after this many days. Requires a Pro or " +
-            "Enterprise plan — omit it on other plans, where the plan's own lifetime applies.",
+          "Optional. The link stops redirecting after this many days: it then answers 410 Gone, " +
+            "stays on the account, and its short URL is never reused. Requires a Pro or Enterprise " +
+            "plan. Omit it on other plans: links made with an API key then don't expire, and " +
+            "anonymous links expire after the anonymous lifetime (check_quota shows it).",
         ),
+      // Kept, though every plan is refused today: removing an input field breaks clients that send it.
       slug: z
         .string()
         .optional()
-        .describe("Optional custom short code. Requires a paid plan; omit it to get a generated one."),
+        .describe(
+          "Don't set this. Custom short codes are not available on any plan, and the API refuses a " +
+            "request that sets slug. Omit it to get a generated short code.",
+        ),
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
   },
@@ -131,6 +137,8 @@ server.registerTool(
             (f) => `  [${f.index}] ${f.url}: ${f.error}${f.code ? ` (${f.code})` : ""}`,
           ),
         );
+        // Once, however many entries hit it: retrying won't help, freeing a slot will.
+        if (result.failed.some((f) => f.code === "QUOTA_EXCEEDED")) sections.push("", QUOTA_HINT_ACCOUNT);
       }
       return ok(sections.join("\n"));
     } catch (error) {
@@ -144,8 +152,9 @@ server.registerTool(
   {
     title: "List my short links",
     description:
-      "List the short links on the authenticated account, with their destinations and total " +
-      "redirect counts. Requires an API key.",
+      "List the 100 most recently created short links on the authenticated account (paused and " +
+      "expired ones included, deleted ones not), with their destinations and total redirect " +
+      "counts. Requires an API key.",
     inputSchema: {},
     annotations: { readOnlyHint: true },
   },
@@ -201,9 +210,10 @@ server.registerTool(
   {
     title: "Delete a short link",
     description:
-      "Permanently delete a short link. The short URL stops working immediately and anyone who " +
-      "already has it will get a 404 — prefer update_link with paused:true if it might be needed " +
-      "again. Requires an API key.",
+      "Delete a short link. This can't be undone: the short URL stops working immediately, anyone " +
+      "who already has it gets a 404, and the link leaves the account's list. Its short URL is " +
+      "never given to another link. Prefer update_link with paused:true if the link might be " +
+      "needed again. Requires an API key.",
     inputSchema: {
       slug: z.string().describe("The link's short code (the part after the domain)."),
     },
@@ -224,9 +234,11 @@ server.registerTool(
   {
     title: "Get a short link's click count",
     description:
-      "Return the total number of times a short link has been followed. This is the only click " +
-      "data that exists — Linkonda stores no per-visitor information, so there is no geographic, " +
-      "device, or referrer breakdown to report. No API key needed.",
+      "Return the total number of times a short link has been followed. Linkonda stores no " +
+      "per-visitor information, so there is no geographic, device or referrer breakdown to " +
+      "report. An A/B split link also has a count per variant, which this tool doesn't return. " +
+      "It looks the short code up on Linkonda's own short-link host, not on a custom domain. No " +
+      "API key needed.",
     inputSchema: {
       slug: z.string().describe("The link's short code (the part after the domain)."),
     },
