@@ -2,7 +2,7 @@
   "name": "@veranoapp/linkonda-mcp",
   "version": "0.1.4",
   "mcpName": "com.linkonda/mcp",
-  "description": "MCP server for Linkonda \u2014 create and manage short links and QR-ready URLs without per-visitor tracking.",
+  "description": "MCP server for Linkonda — create and manage short links and QR-ready URLs without per-visitor tracking.",
   "keywords": [
     "mcp",
     "modelcontextprotocol",
@@ -30,7 +30,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
