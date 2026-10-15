@@ -10,6 +10,7 @@ import {
   LinkondaError,
   QUOTA_HINT_ACCOUNT,
 } from "./api.js";
+import { formatLinkList, formatStats } from "./format.js";
 
 const apiKey = process.env.LINKONDA_API_KEY?.trim() || undefined;
 const client = new LinkondaClient(apiKey, process.env.LINKONDA_API_BASE_URL);
@@ -40,6 +41,12 @@ function fail(error: unknown): ToolResult {
   }
   return { content: [{ type: "text", text: `Unexpected error: ${String(error)}` }], isError: true };
 }
+
+/** update_link and delete_link take the same `linkId`, described once so the two can't drift apart. */
+const LINK_ID_DESCRIPTION =
+  "Optional. Needed only when more than one of your links uses this short code, on different hosts: " +
+  "the call then fails with SLUG_AMBIGUOUS and lists each link's linkId. Call again with the same " +
+  "slug and the linkId of the link you mean.";
 
 const ANON_NOTE =
   "\n\nNote: this link was created anonymously — it expires automatically and is not saved to an account. " +
@@ -169,17 +176,7 @@ server.registerTool(
   async () => {
     try {
       const { links } = await client.listLinks();
-      if (!links || links.length === 0) return ok("No links on this account yet.");
-      return ok(
-        links
-          .map((l) => {
-            const bits = [`${l.shortUrl} -> ${l.targetUrl}`, `${l.clickCount} clicks`];
-            if (l.pausedAt) bits.push("paused");
-            if (l.expiresAt) bits.push(`expires ${l.expiresAt}`);
-            return bits.join("  |  ");
-          })
-          .join("\n"),
-      );
+      return ok(formatLinkList(links ?? []));
     } catch (error) {
       return fail(error);
     }
@@ -195,18 +192,23 @@ server.registerTool(
       "is not deleted. Requires an API key. Changing the destination requires a paid plan.",
     inputSchema: {
       slug: z.string().describe("The link's short code (the part after the domain)."),
+      linkId: z.string().optional().describe(LINK_ID_DESCRIPTION),
       url: z.string().url().optional().describe("New destination URL."),
       paused: z.boolean().optional().describe("true to stop the link redirecting, false to resume it."),
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
   },
-  async ({ slug, url, paused }) => {
+  async ({ slug, linkId, url, paused }) => {
     if (url === undefined && paused === undefined) {
       return { content: [{ type: "text", text: "Provide `url`, `paused`, or both." }], isError: true };
     }
+    // Empty means absent: an empty `linkId` makes the API behave as if none was sent.
+    const id = linkId?.trim() || undefined;
     try {
-      await client.updateLink(slug, { url, paused });
-      return ok(`Updated ${slug}.`);
+      const res = await client.updateLink(slug, { url, paused }, id);
+      // The short URL is on the link's own host, which tells two links with this slug apart.
+      const shortUrl = typeof res?.shortUrl === "string" && res.shortUrl !== "" ? res.shortUrl : undefined;
+      return ok(`Updated ${shortUrl ?? slug}.`);
     } catch (error) {
       return fail(error);
     }
@@ -224,13 +226,17 @@ server.registerTool(
       "needed again. Requires an API key.",
     inputSchema: {
       slug: z.string().describe("The link's short code (the part after the domain)."),
+      linkId: z.string().optional().describe(LINK_ID_DESCRIPTION),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
   },
-  async ({ slug }) => {
+  async ({ slug, linkId }) => {
+    // Empty means absent: an empty `linkId` makes the API behave as if none was sent.
+    const id = linkId?.trim() || undefined;
     try {
-      await client.deleteLink(slug);
-      return ok(`Deleted ${slug}.`);
+      await client.deleteLink(slug, id);
+      // DELETE answers only `{ ok: true }`, so the linkId is what tells two links with this slug apart.
+      return ok(id ? `Deleted ${slug} (linkId ${id}).` : `Deleted ${slug}.`);
     } catch (error) {
       return fail(error);
     }
@@ -244,18 +250,27 @@ server.registerTool(
     description:
       "Return the total number of times a short link has been followed. Linkonda stores no " +
       "per-visitor information, so there is no geographic, device or referrer breakdown to " +
-      "report. An A/B split link also has a count per variant, which this tool doesn't return. " +
-      "It looks the short code up on Linkonda's own short-link host, not on a custom domain. No " +
-      "API key needed.",
+      "report. For an A/B split link it also returns each variant's count, but only to the " +
+      "link's owner, through that account's API key (paid plans). Without host it looks the " +
+      "short code up on Linkonda's own short-link host; set host for a link on a custom domain. " +
+      "No API key needed for the total.",
     inputSchema: {
       slug: z.string().describe("The link's short code (the part after the domain)."),
+      host: z
+        .string()
+        .optional()
+        .describe(
+          "Optional. The hostname of the custom domain the link is on, such as links.example.com, " +
+            "without https:// or a path. Omit it for a link on Linkonda's own short-link host.",
+        ),
     },
     annotations: { readOnlyHint: true },
   },
-  async ({ slug }) => {
+  async ({ slug, host }) => {
+    // Sent as given, trimmed: the API normalises the hostname or answers 404.
+    const h = host?.trim() || undefined;
     try {
-      const stats = await client.getStats(slug);
-      return ok(`${slug} has been followed ${stats.clickCount} time(s).`);
+      return ok(formatStats(slug, h, await client.getStats(slug, h)));
     } catch (error) {
       return fail(error);
     }
