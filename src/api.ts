@@ -95,6 +95,9 @@ export const QUOTA_HINT_RESUME =
 export const CUSTOM_SLUG_HINT =
   "Custom short codes are not available on any Linkonda plan, so upgrading won't enable them. Call shorten_link again without slug to get a generated short code.";
 
+/** The API's code for a refused destination; one constant, so a typo can't silently drop the hint. */
+export const DESTINATION_BLOCKED = "DESTINATION_BLOCKED" as const;
+
 /**
  * The API's `DESTINATION_BLOCKED` text carries what Google's terms require of a warning based on its lists: a
  * qualifier ("suspected"), a learn-more link, "Advisory provided by Google" with its link, and a notice that the
@@ -133,7 +136,7 @@ export function hintFor(
   extra: { tier?: string; retryAfter?: string | null } = {},
 ): string | undefined {
   // Before the status branches: the code alone decides, whatever the status (400, or a batch entry's).
-  if (code === "DESTINATION_BLOCKED") return DESTINATION_BLOCKED_HINT;
+  if (code === DESTINATION_BLOCKED) return DESTINATION_BLOCKED_HINT;
   if (code === "API_KEY_REQUIRES_PAID") {
     return "This API key belongs to a free account. Bearer authentication requires the Plus, Pro, or Enterprise plan — see https://linkonda.com/pricing.";
   }
