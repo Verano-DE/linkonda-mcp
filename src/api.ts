@@ -96,6 +96,14 @@ export const CUSTOM_SLUG_HINT =
   "Custom short codes are not available on any Linkonda plan, so upgrading won't enable them. Call shorten_link again without slug to get a generated short code.";
 
 /**
+ * The API's `DESTINATION_BLOCKED` text carries what Google's terms require of a warning based on its lists: a
+ * qualifier ("suspected"), a learn-more link, "Advisory provided by Google" with its link, and a notice that the
+ * lists can be wrong (Linkonda spec 0032). A model that paraphrases it can drop those, so this asks it not to.
+ */
+export const DESTINATION_BLOCKED_HINT =
+  "Linkonda refused this destination. Relay the message above to the user as written, including any \"Advisory provided by Google\" line and its links, and don't describe the destination as certainly unsafe. Retrying the same URL gives the same answer.";
+
+/**
  * Waiting frees no quota slot, so a quota refusal says what does. Resume is told apart from create
  * by its slug route (it needs another link out of the way); otherwise the API's `tier` wins over
  * whether a key is set, as in `check_quota`.
@@ -124,6 +132,8 @@ export function hintFor(
   path: string,
   extra: { tier?: string; retryAfter?: string | null } = {},
 ): string | undefined {
+  // Before the status branches: the code alone decides, whatever the status (400, or a batch entry's).
+  if (code === "DESTINATION_BLOCKED") return DESTINATION_BLOCKED_HINT;
   if (code === "API_KEY_REQUIRES_PAID") {
     return "This API key belongs to a free account. Bearer authentication requires the Plus, Pro, or Enterprise plan — see https://linkonda.com/pricing.";
   }

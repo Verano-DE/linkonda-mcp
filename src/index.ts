@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { LinkondaClient, LinkondaError, QUOTA_HINT_ACCOUNT } from "./api.js";
+import { DESTINATION_BLOCKED_HINT, LinkondaClient, LinkondaError, QUOTA_HINT_ACCOUNT } from "./api.js";
 
 const apiKey = process.env.LINKONDA_API_KEY?.trim() || undefined;
 const client = new LinkondaClient(apiKey, process.env.LINKONDA_API_BASE_URL);
@@ -139,6 +139,8 @@ server.registerTool(
         );
         // Once, however many entries hit it: retrying won't help, freeing a slot will.
         if (result.failed.some((f) => f.code === "QUOTA_EXCEEDED")) sections.push("", QUOTA_HINT_ACCOUNT);
+        // Also once: each failed line already carries the API's text whole, attribution and links included.
+        if (result.failed.some((f) => f.code === "DESTINATION_BLOCKED")) sections.push("", DESTINATION_BLOCKED_HINT);
       }
       return ok(sections.join("\n"));
     } catch (error) {
