@@ -38,7 +38,16 @@ export type BatchCreateResult = {
   failed: { index: number; url: string; error: string; code?: string }[];
 };
 
-/** Entry of `GET /api/links`. The destination is `targetUrl`, and paused state is a timestamp. */
+/** One destination of an A/B split link, with its own aggregate count. */
+export type Variant = { key: string; targetUrl: string; weight: number; clickCount: number };
+
+/** Entry of a 409 `SLUG_AMBIGUOUS`'s `matches`; `hostname` is null for Linkonda's own short-link host. */
+export type SlugMatch = { linkId: string; hostname: string | null };
+
+/**
+ * Entry of `GET /api/links`. The destination is `targetUrl`, and paused state is a timestamp. For an A/B split link
+ * `targetUrl` is only the fallback; `variants` holds each destination (`[]` for a plain link).
+ */
 export type AccountLink = {
   id: string;
   slug: string;
@@ -48,6 +57,17 @@ export type AccountLink = {
   expiresAt: string | null;
   createdAt: string;
   pausedAt: string | null;
+  abEnabled?: boolean;
+  abWinnerVariant?: string | null;
+  variants?: Variant[];
+};
+
+/** `GET /api/links/{slug}/stats`. `variants` is the owner's view only (by session or a paid key); null for anyone else. */
+export type LinkStats = {
+  clickCount: number;
+  abEnabled?: boolean;
+  abWinnerVariant?: string | null;
+  variants?: Variant[] | null;
 };
 
 export type Quota = {
@@ -78,9 +98,17 @@ export class LinkondaError extends Error {
   }
 }
 
-/** True for routes addressing one link by slug — `/api/links/{slug}`, but not `/api/links` itself. */
+/**
+ * True for routes addressing one link by slug — `/api/links/{slug}`, but not `/api/links` itself nor the batch
+ * routes. Only the real batch routes are excluded: a slug such as `batchsale` is still a link.
+ */
 function isSlugRoute(path: string): boolean {
-  return /^\/api\/links\/[^/]+/.test(path) && !path.startsWith("/api/links/batch");
+  return /^\/api\/links\/[^/]+/.test(path) && !/^\/api\/links\/batch-(create|delete|patch)(?:\?|$)/.test(path);
+}
+
+/** True for `/api/links/{slug}/stats`, with or without a query. */
+function isStatsRoute(path: string): boolean {
+  return /^\/api\/links\/[^/?]+\/stats(?:\?|$)/.test(path);
 }
 
 export const QUOTA_HINT_ANONYMOUS =
@@ -98,6 +126,9 @@ export const CUSTOM_SLUG_HINT =
 /** The API's code for a refused destination; one constant, so a typo can't silently drop the hint. */
 export const DESTINATION_BLOCKED = "DESTINATION_BLOCKED" as const;
 
+/** The API's code for a slug the account uses on more than one host; one constant, as above. */
+export const SLUG_AMBIGUOUS = "SLUG_AMBIGUOUS" as const;
+
 /**
  * The API's `DESTINATION_BLOCKED` text carries what Google's terms require of a warning based on its lists: a
  * qualifier ("suspected"), a learn-more link, "Advisory provided by Google" with its link, and a notice that the
@@ -105,6 +136,25 @@ export const DESTINATION_BLOCKED = "DESTINATION_BLOCKED" as const;
  */
 export const DESTINATION_BLOCKED_HINT =
   "Linkonda refused this destination. Relay the message above to the user as written, including any \"Advisory provided by Google\" line and its links, and don't describe the destination as certainly unsafe. Retrying the same URL gives the same answer.";
+
+export const NOT_FOUND_HINT_LINK =
+  "No link with that short code on your account. Check the slug (the part after the domain, not the full URL). A deleted link is not found. With linkId, only the link that has both that linkId and this short code is found.";
+
+export const NOT_FOUND_HINT_STATS =
+  "No link with that short code. Check the slug (the part after the domain, not the full URL). A deleted link is not found. Without host, get_link_stats looks only on Linkonda's own short-link host; for a link on a custom domain, set host to the hostname of the verified custom domain the link is on, such as links.example.com.";
+
+export const SLUG_AMBIGUOUS_HINT_NO_MATCHES =
+  "More than one of your links uses this short code, and the API's answer didn't list them. Call the tool again with the same slug and linkId set to the link you mean.";
+
+/** The 409 `SLUG_AMBIGUOUS` hint: each candidate's linkId and host, in the API's order. Exported for backlog 0003. */
+export function slugAmbiguousHint(matches: SlugMatch[]): string {
+  if (matches.length === 0) return SLUG_AMBIGUOUS_HINT_NO_MATCHES;
+  return [
+    "More than one of your links uses this short code:",
+    ...matches.map((m) => `  linkId ${m.linkId}: on ${m.hostname ?? "Linkonda's own short-link host"}`),
+    "Call the tool again with the same slug and linkId set to the link you mean.",
+  ].join("\n");
+}
 
 /**
  * Waiting frees no quota slot, so a quota refusal says what does. Resume is told apart from create
@@ -133,10 +183,11 @@ export function hintFor(
   code: string | undefined,
   hasKey: boolean,
   path: string,
-  extra: { tier?: string; retryAfter?: string | null } = {},
+  extra: { tier?: string; retryAfter?: string | null; matches?: SlugMatch[] } = {},
 ): string | undefined {
   // Before the status branches: the code alone decides, whatever the status (400, or a batch entry's).
   if (code === DESTINATION_BLOCKED) return DESTINATION_BLOCKED_HINT;
+  if (code === SLUG_AMBIGUOUS) return slugAmbiguousHint(extra.matches ?? []);
   if (code === "API_KEY_REQUIRES_PAID") {
     return "This API key belongs to a free account. Bearer authentication requires the Plus, Pro, or Enterprise plan — see https://linkonda.com/pricing.";
   }
@@ -151,11 +202,12 @@ export function hintFor(
       : "This action needs an API key. Set LINKONDA_API_KEY in the MCP server config — create one at https://linkonda.com/api-keys (paid plans).";
   }
   if (status === 404) {
-    // A 404 means two different things here. On a slug route the link is missing; anywhere else
-    // the route itself is missing, which in practice means the base URL points somewhere wrong.
-    return isSlugRoute(path)
-      ? "No link with that short code. Check the slug (the part after the domain, not the full URL). A deleted link is not found, update_link and delete_link find only links on your own account, and get_link_stats finds only links on Linkonda's own short-link host, not on a custom domain."
-      : "That API endpoint does not exist. Check LINKONDA_API_BASE_URL — it should point at a Linkonda API host (default https://api.linkonda.com).";
+    // A 404 means two different things here. On a slug route the link is missing (stats look on one host, the
+    // link routes among the account's own links); anywhere else the route itself is missing, which in practice
+    // means the base URL points somewhere wrong.
+    if (isStatsRoute(path)) return NOT_FOUND_HINT_STATS;
+    if (isSlugRoute(path)) return NOT_FOUND_HINT_LINK;
+    return "That API endpoint does not exist. Check LINKONDA_API_BASE_URL — it should point at a Linkonda API host (default https://api.linkonda.com).";
   }
   if (status === 429) {
     return code === "QUOTA_EXCEEDED" ? quotaHint(extra.tier, hasKey, path) : rateLimitHint(extra.retryAfter);
@@ -225,10 +277,11 @@ export class LinkondaClient {
         (typeof payload?.message === "string" && payload.message) ||
         (typeof payload?.error === "string" && payload.error) ||
         `Request failed with HTTP ${response.status}`;
-      // `tier` and Retry-After are read only to choose the hint.
+      // `tier`, Retry-After and `matches` are read only to choose the hint.
       const hint = hintFor(response.status, code, this.authenticated, path, {
         tier: typeof payload?.tier === "string" ? payload.tier : undefined,
         retryAfter: response.headers.get("retry-after"),
+        matches: code === SLUG_AMBIGUOUS ? slugMatches(payload?.matches) : undefined,
       });
       throw new LinkondaError(message, response.status, code, hint);
     }
@@ -253,24 +306,29 @@ export class LinkondaClient {
     return this.request<{ links: AccountLink[] }>("GET", "/api/links", { auth: "required" });
   }
 
-  updateLink(slug: string, patch: { url?: string; paused?: boolean }) {
-    return this.request<unknown>("PATCH", `/api/links/${encodeURIComponent(slug)}`, {
-      body: patch,
+  /** `linkId` picks one of the account's links sharing this slug (on different hosts); see `SLUG_AMBIGUOUS`. */
+  updateLink(slug: string, patch: { url?: string; paused?: boolean }, linkId?: string) {
+    return this.request<{ shortUrl?: string }>(
+      "PATCH",
+      `/api/links/${encodeURIComponent(slug)}${query("linkId", linkId)}`,
+      { body: patch, auth: "required" },
+    );
+  }
+
+  deleteLink(slug: string, linkId?: string) {
+    return this.request<unknown>("DELETE", `/api/links/${encodeURIComponent(slug)}${query("linkId", linkId)}`, {
       auth: "required",
     });
   }
 
-  deleteLink(slug: string) {
-    return this.request<unknown>("DELETE", `/api/links/${encodeURIComponent(slug)}`, {
-      auth: "required",
-    });
-  }
-
-  /** Public endpoint — returns the total redirect count and nothing about who followed the link. */
-  getStats(slug: string) {
-    return this.request<{ clickCount: number }>(
+  /**
+   * Public endpoint — returns the total redirect count and nothing about who followed the link; `variants` only
+   * to the owner. `host` names a custom domain; without it the API looks on Linkonda's own short-link host.
+   */
+  getStats(slug: string, host?: string) {
+    return this.request<LinkStats>(
       "GET",
-      `/api/links/${encodeURIComponent(slug)}/stats`,
+      `/api/links/${encodeURIComponent(slug)}/stats${query("host", host)}`,
       { auth: "optional" },
     );
   }
@@ -278,6 +336,31 @@ export class LinkondaClient {
   getQuota() {
     return this.request<Quota>("GET", "/api/quota", { auth: "optional" });
   }
+}
+
+/**
+ * `?name=value` when `value` is non-empty after trimming, else nothing: empty means absent, as the API treats an
+ * empty `linkId` as none, so the request stays byte-equal to one without the argument.
+ */
+function query(name: "linkId" | "host", value: string | undefined): string {
+  const trimmed = value?.trim();
+  return trimmed ? `?${new URLSearchParams({ [name]: trimmed })}` : "";
+}
+
+/**
+ * The 409 `SLUG_AMBIGUOUS` body's `matches`, read only to tell the model which linkIds it can pass. Entries
+ * without a usable linkId are dropped; a missing or empty `hostname` means Linkonda's own short-link host.
+ */
+function slugMatches(raw: unknown): SlugMatch[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SlugMatch[] = [];
+  for (const m of raw) {
+    if (typeof m !== "object" || m === null) continue;
+    const { linkId, hostname } = m as Record<string, unknown>;
+    if (typeof linkId !== "string" || linkId === "") continue;
+    out.push({ linkId, hostname: typeof hostname === "string" && hostname !== "" ? hostname : null });
+  }
+  return out;
 }
 
 function safeJson(text: string): Record<string, unknown> | undefined {
