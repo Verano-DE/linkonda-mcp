@@ -98,9 +98,12 @@ export class LinkondaError extends Error {
   }
 }
 
-/** True for routes addressing one link by slug — `/api/links/{slug}`, but not `/api/links` itself. */
+/**
+ * True for routes addressing one link by slug — `/api/links/{slug}`, but not `/api/links` itself nor the batch
+ * routes. Only the real batch routes are excluded: a slug such as `batchsale` is still a link.
+ */
 function isSlugRoute(path: string): boolean {
-  return /^\/api\/links\/[^/]+/.test(path) && !path.startsWith("/api/links/batch");
+  return /^\/api\/links\/[^/]+/.test(path) && !/^\/api\/links\/batch-(create|delete|patch)(?:\?|$)/.test(path);
 }
 
 /** True for `/api/links/{slug}/stats`, with or without a query. */
@@ -122,6 +125,9 @@ export const CUSTOM_SLUG_HINT =
 
 /** The API's code for a refused destination; one constant, so a typo can't silently drop the hint. */
 export const DESTINATION_BLOCKED = "DESTINATION_BLOCKED" as const;
+
+/** The API's code for a slug the account uses on more than one host; one constant, as above. */
+export const SLUG_AMBIGUOUS = "SLUG_AMBIGUOUS" as const;
 
 /**
  * The API's `DESTINATION_BLOCKED` text carries what Google's terms require of a warning based on its lists: a
@@ -181,7 +187,7 @@ export function hintFor(
 ): string | undefined {
   // Before the status branches: the code alone decides, whatever the status (400, or a batch entry's).
   if (code === DESTINATION_BLOCKED) return DESTINATION_BLOCKED_HINT;
-  if (code === "SLUG_AMBIGUOUS") return slugAmbiguousHint(extra.matches ?? []);
+  if (code === SLUG_AMBIGUOUS) return slugAmbiguousHint(extra.matches ?? []);
   if (code === "API_KEY_REQUIRES_PAID") {
     return "This API key belongs to a free account. Bearer authentication requires the Plus, Pro, or Enterprise plan — see https://linkonda.com/pricing.";
   }
@@ -275,7 +281,7 @@ export class LinkondaClient {
       const hint = hintFor(response.status, code, this.authenticated, path, {
         tier: typeof payload?.tier === "string" ? payload.tier : undefined,
         retryAfter: response.headers.get("retry-after"),
-        matches: code === "SLUG_AMBIGUOUS" ? slugMatches(payload?.matches) : undefined,
+        matches: code === SLUG_AMBIGUOUS ? slugMatches(payload?.matches) : undefined,
       });
       throw new LinkondaError(message, response.status, code, hint);
     }
