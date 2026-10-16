@@ -66,6 +66,11 @@ export type AccountLink = {
 export type LinkStats = {
   clickCount: number;
   abEnabled?: boolean;
+  /**
+   * The owner's view only (spec 0015): true when the owner's plan has no A/B split links now, so every click goes to
+   * the primary destination and the variant counts are as of the plan change. Null for anyone else; absent on older APIs.
+   */
+  abDormant?: boolean | null;
   abWinnerVariant?: string | null;
   variants?: Variant[] | null;
 };
@@ -188,8 +193,17 @@ export function hintFor(
   // Before the status branches: the code alone decides, whatever the status (400, or a batch entry's).
   if (code === DESTINATION_BLOCKED) return DESTINATION_BLOCKED_HINT;
   if (code === SLUG_AMBIGUOUS) return slugAmbiguousHint(extra.matches ?? []);
+  // M-3 to M-5 (spec 0015, Q-0060): the plans that have API keys and bulk creation, and what to do about a key beyond
+  // the plan's count. They name plans, so they change with the API's table.
   if (code === "API_KEY_REQUIRES_PAID") {
-    return "This API key belongs to a free account. Bearer authentication requires the Plus, Pro, or Enterprise plan — see https://linkonda.com/pricing.";
+    return "This API key belongs to a Free account. API keys need the Starter, Pro or Business plan: https://linkonda.com/pricing";
+  }
+  if (code === "BATCH_CREATE_REQUIRES_PRO") {
+    return "Creating links in bulk needs the Pro or Business plan (https://linkonda.com/pricing). Use shorten_link for one URL at a time.";
+  }
+  // The server sends no `POST /api/api-keys`, so this is always a key beyond the account's count, on any status.
+  if (code === "API_KEY_LIMIT_EXCEEDED") {
+    return "This account has more API keys than its plan allows, and this key is not among the oldest that keep working. Revoke an older key at https://linkonda.com/api-keys, or put an older key in LINKONDA_API_KEY.";
   }
   // Both codes mean the same today: no plan has custom codes, so the API's "requires a paid plan" would send a
   // Free caller to upgrade for nothing.
