@@ -125,8 +125,16 @@ export const QUOTA_HINT_ACCOUNT =
 export const QUOTA_HINT_RESUME =
   "Resuming this link would go over your plan's limit on active links (check_quota shows the numbers). Pause or delete another link first, or move to a plan with a higher limit (https://linkonda.com/pricing).";
 
+// M-2 to M-4 (Linkonda spec 0023, Q-0059). They name plans and the API's slug rules, so they change with the API.
 export const CUSTOM_SLUG_HINT =
-  "Custom short codes are not available on any Linkonda plan, so upgrading won't enable them. Call shorten_link again without slug to get a generated short code.";
+  "Custom short codes need an API key from an account on the Starter, Pro or Business plan (https://linkonda.com/pricing). Call shorten_link again without slug to get a generated short code.";
+
+export const SLUG_TAKEN_HINT =
+  "That short code is already used on this host. A short code is never given out again, even after its link is deleted or expires, so pick another slug, or call shorten_link again without slug to get a generated one.";
+
+/** For `SLUG_INVALID` and `RESERVED_SLUG`: the API's line says which; this says what to do about either. */
+export const SLUG_RULES_HINT =
+  "Pick another slug: 4 to 64 letters, digits, hyphens or underscores, starting and ending with a letter or digit, and not a reserved word. Or call shorten_link again without slug to get a generated short code.";
 
 /** The API's code for a refused destination; one constant, so a typo can't silently drop the hint. */
 export const DESTINATION_BLOCKED = "DESTINATION_BLOCKED" as const;
@@ -205,11 +213,10 @@ export function hintFor(
   if (code === "API_KEY_LIMIT_EXCEEDED") {
     return "This account has more API keys than its plan allows, and this key is not among the oldest that keep working. Revoke an older key at https://linkonda.com/api-keys, or put an older key in LINKONDA_API_KEY.";
   }
-  // Both codes mean the same today: no plan has custom codes, so the API's "requires a paid plan" would send a
-  // Free caller to upgrade for nothing.
-  if (code === "CUSTOM_SLUG_UNSUPPORTED" || code === "CUSTOM_SLUG_REQUIRES_PAID") {
-    return CUSTOM_SLUG_HINT;
-  }
+  // `CUSTOM_SLUG_UNSUPPORTED` is no longer sent (spec 0023) and gets no hint: the API's own line is enough.
+  if (code === "CUSTOM_SLUG_REQUIRES_PAID") return CUSTOM_SLUG_HINT;
+  if (code === "SLUG_TAKEN") return SLUG_TAKEN_HINT;
+  if (code === "SLUG_INVALID" || code === "RESERVED_SLUG") return SLUG_RULES_HINT;
   if (status === 401) {
     return hasKey
       ? "The LINKONDA_API_KEY appears to be invalid or revoked. Create a new key in the Linkonda dashboard."
