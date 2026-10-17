@@ -74,13 +74,16 @@ server.registerTool(
             "plan. Omit it on other plans: links made with an API key then don't expire, and " +
             "anonymous links expire after the anonymous lifetime (check_quota shows it).",
         ),
-      // Kept, though every plan is refused today: removing an input field breaks clients that send it.
+      // Starter, Pro and Business accounts can set it (Linkonda spec 0023); rules and refusals come from the API.
       slug: z
         .string()
         .optional()
         .describe(
-          "Don't set this. Custom short codes are not available on any plan, and the API refuses a " +
-            "request that sets slug. Omit it to get a generated short code.",
+          "Optional. A custom short code for the link, such as spring-sale: 4 to 64 letters, digits, " +
+            "hyphens or underscores, starting and ending with a letter or digit. Needs LINKONDA_API_KEY " +
+            "from an account on the Starter, Pro or Business plan. Some words are reserved. A short code " +
+            "is never given out again, even after its link is deleted or expires, and it can't be changed " +
+            "later. Omit it to get a generated short code.",
         ),
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
