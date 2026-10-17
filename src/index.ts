@@ -70,7 +70,7 @@ server.registerTool(
         .optional()
         .describe(
           "Optional. The link stops redirecting after this many days: it then answers 410 Gone, " +
-            "stays on the account, and its short URL is never reused. Requires a Pro or Enterprise " +
+            "stays on the account, and its short URL is never reused. Needs the Pro or Business " +
             "plan. Omit it on other plans: links made with an API key then don't expire, and " +
             "anonymous links expire after the anonymous lifetime (check_quota shows it).",
         ),
@@ -104,8 +104,8 @@ server.registerTool(
   {
     title: "Shorten many URLs at once",
     description:
-      "Create up to 100 short links in a single request. Requires an API key. Use this instead of " +
-      "calling shorten_link repeatedly when shortening several URLs.",
+      "Create up to 100 short links in a single request. Needs an API key from an account on the " +
+      "Pro or Business plan; on other plans, call shorten_link once per URL.",
     inputSchema: {
       links: z
         .array(

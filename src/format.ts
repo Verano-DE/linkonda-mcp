@@ -13,6 +13,10 @@ export const LIST_CAP = 100;
 export const LIST_CAP_NOTE =
   "The list stops at the 100 most recently created links; older ones, if any, are not shown.";
 
+/** M-6 (spec 0015, Q-0060): the owner's split whose plan no longer has A/B split links. */
+export const AB_DORMANT_NOTE =
+  "Split paused: the owner's plan doesn't include A/B split links, so every click goes to the primary destination. Variant counts are as of the plan change.";
+
 export const AB_COUNTS_OWNER_ONLY =
   "This is an A/B split link. Each variant's count is shown only to the link's owner, through an API key of that account on a paid plan.";
 
@@ -34,6 +38,7 @@ export function formatStats(slug: string, host: string | undefined, stats: LinkS
   } else if (stats.abEnabled === true && stats.variants == null) {
     lines.push(AB_COUNTS_OWNER_ONLY);
   }
+  if (stats.abEnabled === true && stats.abDormant === true) lines.push(AB_DORMANT_NOTE);
   return lines.join("\n");
 }
 
