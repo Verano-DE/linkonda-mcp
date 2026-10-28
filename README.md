@@ -13,9 +13,10 @@ Most shortener MCP servers refuse to start without credentials. This one shorten
 | `shorten_link` | ✅ 10 links, expire after 30 days | ✅ permanent, saved to your account |
 | `get_link_stats` | ✅ | ✅ |
 | `check_quota` | ✅ anonymous allowance | ✅ your plan |
-| `shorten_links_bulk`, `list_links`, `update_link`, `delete_link` | ✗ | ✅ |
+| `list_links`, `update_link`, `delete_link` | ✗ | ✅ |
+| `shorten_links_bulk` | ✗ | ✅ Pro and Business |
 
-Bearer authentication requires a paid plan — see [pricing](https://linkonda.com/pricing). Create a key in the dashboard under **API keys**; it is shown once.
+API keys come with the Starter, Pro and Business plans; see [pricing](https://linkonda.com/pricing). Create a key in the dashboard under **API keys**; it is shown once.
 
 ## Install
 
@@ -56,7 +57,7 @@ To use an API key, add it to the same entry:
 | Tool | What it does | Key required |
 | --- | --- | --- |
 | `shorten_link` | Shorten one URL | No |
-| `shorten_links_bulk` | Shorten up to 100 URLs in one request | Yes |
+| `shorten_links_bulk` | Shorten up to 100 URLs in one request | Yes, from a Pro or Business account |
 | `list_links` | List your 100 most recent links with destinations and click counts | Yes |
 | `update_link` | Change a destination, or pause/resume a link | Yes |
 | `delete_link` | Delete a link (can't be undone; its short URL is never reused) | Yes |
