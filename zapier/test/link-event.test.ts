@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import nock from "nock";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { retryTiming } from "../src/unsubscribe.js";
 import { EVENT_KEYS, TRIGGER_KEYS, verifySignature } from "../src/triggers/link-event.js";
 import { API, app, appTester, authData, bundleFor, failure, KEY } from "./helpers.js";
 
@@ -80,6 +81,82 @@ describe("subscribe and unsubscribe", () => {
     expect(
       await failure(() => appTester(op.performSubscribe, bundleFor({ event: "link.created" }, { targetUrl: HOOK }))),
     ).toMatchObject({ name: "ExpiredAuthError" });
+  });
+
+  describe("unsubscribe retries (spec 0163)", () => {
+    const PATH = "/api/webhooks/subscriptions/whs_x";
+    const run = () => appTester(op.performUnsubscribe, bundleFor({}, { subscribeData: { id: "whs_x" } }));
+    /** Records the waits and resolves at once. */
+    const waits = () => {
+      const spy = vi.spyOn(retryTiming, "wait").mockResolvedValue(undefined);
+      onTestFinished(() => spy.mockRestore());
+      return spy;
+    };
+
+    it("unsubscribe retries a 5xx and ends on the next 200", async () => {
+      const spy = waits();
+      const scope = nock(API).delete(PATH).reply(503, { error: "x" }).delete(PATH).reply(200, { ok: true });
+      await run();
+      expect(scope.isDone()).toBe(true);
+      expect(spy.mock.calls.map((c) => c[0])).toEqual([1000]);
+    });
+
+    it("unsubscribe retries a transport error", async () => {
+      const spy = waits();
+      const scope = nock(API).delete(PATH).replyWithError("socket hang up").delete(PATH).reply(200, { ok: true });
+      await run();
+      expect(scope.isDone()).toBe(true);
+      expect(spy.mock.calls.map((c) => c[0])).toEqual([1000]);
+    });
+
+    // A real 4.1 s delay on purpose: the only proof that core honours the per-attempt `timeout`.
+    it("unsubscribe retries an attempt with no answer within 4 seconds", async () => {
+      const spy = waits();
+      const scope = nock(API).delete(PATH).delay(4100).reply(200, { ok: true }).delete(PATH).reply(200, { ok: true });
+      await run();
+      expect(scope.isDone()).toBe(true);
+      expect(spy.mock.calls.map((c) => c[0])).toEqual([1000]);
+    }, 10_000);
+
+    it("a gone answer on a retry ends without error", async () => {
+      waits();
+      const scope = nock(API)
+        .delete(PATH)
+        .reply(503, { error: "x" })
+        .delete(PATH)
+        .reply(404, { error: "Not found.", code: "WEBHOOK_SUBSCRIPTION_NOT_FOUND" });
+      await expect(run()).resolves.toBeDefined();
+      expect(scope.isDone()).toBe(true);
+    });
+
+    it("unsubscribe does not retry a 429", async () => {
+      const spy = waits();
+      const scope = nock(API).delete(PATH).reply(429, { error: "Too many requests", code: "RATE_LIMITED" }, { "Retry-After": "7" });
+      expect(await failure(run)).toMatchObject({ name: "ThrottledError", delay: 7 });
+      expect(scope.isDone()).toBe(true);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("unsubscribe stops at once on any other answer", async () => {
+      const spy = waits();
+      nock(API).delete(PATH).reply(403, { error: "No.", code: "EMAIL_NOT_VERIFIED" });
+      expect(await failure(run)).toMatchObject({ name: "AppError", code: "EMAIL_NOT_VERIFIED", status: 403 });
+      nock(API).delete(PATH).reply(401, { error: "No.", code: "UNAUTHORIZED" });
+      expect(await failure(run)).toMatchObject({ name: "ExpiredAuthError" });
+      expect(nock.pendingMocks()).toEqual([]);
+      expect(spy).not.toHaveBeenCalled();
+    });
+  });
+
+  it("subscribe makes one attempt on a 5xx", async () => {
+    const spy = vi.spyOn(retryTiming, "wait").mockResolvedValue(undefined);
+    onTestFinished(() => spy.mockRestore());
+    const scope = nock(API).post("/api/webhooks/subscriptions").reply(503, { error: "x" });
+    expect(
+      await failure(() => appTester(op.performSubscribe, bundleFor({ event: "link.created" }, { targetUrl: HOOK }))),
+    ).toMatchObject({ status: 503 });
+    expect(scope.isDone()).toBe(true);
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 
