@@ -26,8 +26,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && chmod +x dist/index.js",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "typecheck": "tsc --noEmit && node scripts/raycast.mjs typecheck",
+    "lint": "node scripts/raycast.mjs check build",
+    "test": "vitest run --dir src && node scripts/raycast.mjs test",
     "check:glama-image": "node scripts/check-glama-image.mjs",
     "prepack": "npm run build"
   },

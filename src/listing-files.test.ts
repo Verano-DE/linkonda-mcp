@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -52,5 +53,18 @@ describe("listing files", () => {
     expect(pkg.files).toEqual(["dist"]);
     const build = JSON.parse(read("tsconfig.build.json")) as { exclude?: string[] };
     expect(build.exclude).toContain("src/**/*.test.ts");
+  });
+
+  // Spec 0143, ADR 0022: raycast/ is a separate package that goes to raycast/extensions, never to npm.
+  it("the npm package leaves out the Raycast extension", () => {
+    // --ignore-scripts: `prepack` would build, and this only lists what would be packed.
+    const out = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+      cwd: new URL("../", import.meta.url),
+      encoding: "utf8",
+    });
+    const [packed] = JSON.parse(out) as { files: { path: string }[] }[];
+    const paths = packed!.files.map((f) => f.path);
+    expect(paths.length).toBeGreaterThan(0);
+    expect(paths.filter((p) => p.startsWith("raycast/"))).toEqual([]);
   });
 });
