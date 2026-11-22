@@ -1,0 +1,29 @@
+{
+  "name": "linkonda-zapier",
+  "version": "1.0.0",
+  "description": "Linkonda for Zapier: create short links and start Zaps from link events.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": "./dist/index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npm run _zapier-build",
+    "_zapier-build": "tsc",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zapier-platform-core": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "nock": "15.0.6",
+    "typescript": "5.9.3",
+    "vitest": "5.1.1",
+    "zapier-platform-schema": "19.3.0"
+  }
+}
