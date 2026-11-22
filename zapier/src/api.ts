@@ -85,6 +85,8 @@ export const mapErrors: AfterResponseMiddleware = (response, z, bundle) => {
   if (response.request?.middlewareData?.unsubscribe === true) {
     const code = typeof data === "object" && data !== null ? asString((data as { code?: unknown }).code) : undefined;
     if (isGoneAnswer(status, code)) return response;
+    // A 5xx is retried by `unsubscribeWithRetry`, which throws it after the last attempt (spec 0163 AC-5).
+    if (status >= 500) return response;
   }
   throw errorFor(z, status, data, response.headers?.get("retry-after"), apiKeyOf(bundle.authData));
 };

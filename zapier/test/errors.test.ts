@@ -1,5 +1,6 @@
 import nock from "nock";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { retryTiming } from "../src/unsubscribe.js";
 import { API, app, appTester, authData, bundleFor, failure, KEY } from "./helpers.js";
 
 const create = () => appTester(app.creates.create_link.operation.perform, bundleFor({ url: "https://example.com/a" }));
@@ -50,13 +51,21 @@ describe("error mapping", () => {
     expect(await failure(unsubscribe)).toMatchObject({ message: "Linkonda returned an error (HTTP 404).", status: 404 });
   });
 
-  it("unsubscribe fails on a 5xx, even with a code that would end it", async () => {
-    nock(API).delete("/api/webhooks/subscriptions/whs_x").reply(503, { error: "x", code: "WEBHOOK_SUBSCRIPTION_NOT_FOUND" });
+  it("unsubscribe gives up after four attempts with today's error", async () => {
+    const spy = vi.spyOn(retryTiming, "wait").mockResolvedValue(undefined);
+    onTestFinished(() => spy.mockRestore());
+    // Even with a code that would end a 404: a 5xx's body is ignored (0144 AC-3).
+    const scope = nock(API)
+      .delete("/api/webhooks/subscriptions/whs_x")
+      .times(4)
+      .reply(503, { error: "x", code: "WEBHOOK_SUBSCRIPTION_NOT_FOUND" });
     expect(
       await failure(() =>
         appTester(app.triggers.link_event.operation.performUnsubscribe, bundleFor({}, { subscribeData: { id: "whs_x" } })),
       ),
     ).toMatchObject({ message: "Linkonda couldn't answer right now (HTTP 503). Try again later.", status: 503 });
+    expect(scope.isDone()).toBe(true);
+    expect(spy.mock.calls.map((c) => c[0])).toEqual([1000, 2000, 4000]);
   });
 
   it("the code decides, except 5xx", async () => {

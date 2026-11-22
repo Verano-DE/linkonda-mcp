@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Trigger } from "zapier-platform-core";
 import { API_BASE_URL } from "../api.js";
 import { TRIGGER_SAMPLE } from "../samples.js";
+import { unsubscribeWithRetry } from "../unsubscribe.js";
 import { ERROR_SIGNATURE, ERROR_UNEXPECTED, TRIGGER } from "../texts.js";
 
 /** The eight keys read from an event's `data`; the three of the envelope come first in `TRIGGER_KEYS`. */
@@ -102,12 +103,7 @@ export const linkEvent: Trigger = {
       const id = bundle.subscribeData?.id;
       // Nothing was stored: nothing to end.
       if (typeof id !== "string") return {};
-      await z.request({
-        url: `${API_BASE_URL}/api/webhooks/subscriptions/${encodeURIComponent(id)}`,
-        method: "DELETE",
-        // `mapErrors` lets a subscription that is already gone count as ended (AC-3's exception).
-        middlewareData: { unsubscribe: true },
-      });
+      await unsubscribeWithRetry(z, bundle, id);
       return {};
     },
     perform: async (z, bundle) => {

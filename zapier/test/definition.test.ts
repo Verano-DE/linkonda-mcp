@@ -6,6 +6,7 @@ import { app } from "./helpers.js";
 import { CREATE_SAMPLE, TRIGGER_SAMPLE } from "../src/samples.js";
 import { TRIGGER_KEYS } from "../src/triggers/link-event.js";
 import * as texts from "../src/texts.js";
+import { UNSUBSCRIBE_ATTEMPT_TIMEOUT_MS, UNSUBSCRIBE_RETRY_DELAYS_MS } from "../src/unsubscribe.js";
 
 const root = new URL("../", import.meta.url).pathname;
 const read = (path: string) => readFileSync(join(root, path), "utf8");
@@ -73,6 +74,14 @@ describe("the app definition", () => {
     expect(Object.keys(trigger.sample).sort()).toEqual([...TRIGGER_KEYS].sort());
     expect(trigger.outputFields.map((f: { key: string }) => f.key).sort()).toEqual([...TRIGGER_KEYS].sort());
     expect(TRIGGER_SAMPLE.createdAt).toMatch(ISO);
+  });
+
+  it("the unsubscribe schedule fits inside Zapier's 30-second limit", () => {
+    const attempts = UNSUBSCRIBE_RETRY_DELAYS_MS.length + 1;
+    const worst = attempts * UNSUBSCRIBE_ATTEMPT_TIMEOUT_MS + UNSUBSCRIBE_RETRY_DELAYS_MS.reduce((a, b) => a + b, 0);
+    expect(attempts).toBe(4);
+    expect(worst).toBe(23_000);
+    expect(worst).toBeLessThan(30_000);
   });
 
   it("apiKey is the only auth field, a required password", () => {
