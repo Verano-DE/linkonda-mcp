@@ -1,0 +1,12 @@
+{
+  "version": "0.1.6",
+  "tools": [
+    "shorten_link",
+    "shorten_links_bulk",
+    "list_links",
+    "update_link",
+    "delete_link",
+    "get_link_stats",
+    "check_quota"
+  ]
+}

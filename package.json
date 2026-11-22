@@ -24,9 +24,11 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "tsc && chmod +x dist/index.js",
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/index.js",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check:glama-image": "node scripts/check-glama-image.mjs",
     "prepack": "npm run build"
   },
   "dependencies": {
@@ -35,7 +37,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
   },
   "repository": {
     "type": "git",
