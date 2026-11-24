@@ -1,5 +1,7 @@
 # Linkonda MCP server
 
+[![linkonda-mcp MCP server – quality and maintenance score on Glama](https://glama.ai/mcp/servers/Verano-DE/linkonda-mcp/badges/score.svg)](https://glama.ai/mcp/servers/Verano-DE/linkonda-mcp)
+
 Create and manage [Linkonda](https://linkonda.com) short links from Claude, Claude Code, Cursor, or any other MCP client.
 
 When a short link is followed, Linkonda counts the click (a total per link, and per variant on an A/B split link) and records nothing about the visitor: no IP address, location, device data or referrer. That matters more than usual for an agent, which can generate links in bulk without building a visitor dataset you then have to secure, retain, and answer requests about.
