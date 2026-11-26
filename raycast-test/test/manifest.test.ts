@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const root = new URL("../", import.meta.url).pathname;
+const root = new URL("../../raycast/", import.meta.url).pathname;
 const read = (path: string) => readFileSync(join(root, path), "utf8");
 
 type Manifest = {
@@ -15,7 +15,7 @@ type Manifest = {
   platforms: string[];
   categories: string[];
   keywords: string[];
-  commands: { name: string; title: string; subtitle: string; description: string; mode: string }[];
+  commands: { name: string; title: string; subtitle?: string; description: string; mode: string }[];
   preferences: {
     name: string;
     type: string;
@@ -58,6 +58,8 @@ describe("the manifest", () => {
     expect(manifest.commands).toHaveLength(1);
     const [command] = manifest.commands;
     expect(command).toMatchObject({ name: "shorten-clipboard-url", mode: "view" });
+    // A single-command extension adds no subtitle repeating its title (the store's naming rule, PR #33938's review).
+    expect(command).not.toHaveProperty("subtitle");
     expect(existsSync(join(root, "src", `${command!.name}.tsx`))).toBe(true);
   });
 
@@ -105,7 +107,6 @@ describe("the manifest", () => {
     expect(manifest.description.length).toBeLessThanOrEqual(155);
     expect(manifest.commands[0]).toMatchObject({
       title: "Shorten Clipboard URL",
-      subtitle: "Linkonda",
       description: "Shorten the URL on your clipboard, copy the short link and show its QR code.",
     });
     expect(manifest.preferences[0]).toMatchObject({

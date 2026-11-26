@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clipboardUrl } from "../src/lib/clipboard";
+import { clipboardUrl } from "../../raycast/src/lib/clipboard";
 
 describe("clipboardUrl", () => {
   it("takes a lone http(s) URL, trimmed", () => {

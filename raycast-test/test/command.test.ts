@@ -23,7 +23,10 @@ vi.mock("@raycast/api", () => {
   };
 });
 
-import { run } from "../src/shorten-clipboard-url";
+// run() is tested without the view: the hook only matters inside Raycast.
+vi.mock("@raycast/utils", () => ({ usePromise: () => ({ isLoading: true, revalidate: () => undefined }) }));
+
+import { run } from "../../raycast/src/shorten-clipboard-url";
 
 const created = {
   id: "abc",
@@ -90,7 +93,13 @@ describe("the command", () => {
     raycast.copy.mockRejectedValue(new Error("copy"));
     const state = await run();
     expect(state).toMatchObject({ view: "done", copied: false });
-    expect(raycast.showToast).toHaveBeenCalledTimes(1); // the success toast of the first run only
+    // A failed copy is not silent: the clipboard still holds the long URL.
+    expect(raycast.showToast).toHaveBeenCalledTimes(2);
+    expect(raycast.showToast).toHaveBeenLastCalledWith({
+      style: "failure",
+      title: "Couldn't copy the short link",
+      message: "https://lnko.eu/x7Kp2",
+    });
 
     respond(500, {});
     expect(await run()).toMatchObject({ view: "failed", failure: { kind: "unavailable" } });
