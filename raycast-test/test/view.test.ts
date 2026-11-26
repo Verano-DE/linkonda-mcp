@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ShortenResult } from "../src/lib/api";
+import type { ShortenResult } from "../../raycast/src/lib/api";
 import {
   CREDENTIALS_BODY,
   CREDENTIALS_TITLE,
@@ -22,7 +22,7 @@ import {
   renderQrDataUrl,
   retryAfterText,
   successMarkdown,
-} from "../src/lib/view";
+} from "../../raycast/src/lib/view";
 
 type Failure = Extract<ShortenResult, { ok: false }>;
 

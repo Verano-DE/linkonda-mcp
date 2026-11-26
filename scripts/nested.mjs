@@ -1,5 +1,7 @@
 // node scripts/nested.mjs <dir> <script>...  runs scripts of a nested npm package of this repo (ADR 0023, which amends
-// ADR 0022 Decision 2; specs 0143 and 0144): `raycast` (Raycast extension) or `zapier` (Zapier app).
+// ADR 0022 Decision 2; specs 0143 and 0144): `raycast` (Raycast extension), `raycast-test` (its tests, kept out of the
+// folder that goes to raycast/extensions, which takes a first extension without tests: PR #33938's review) or `zapier`
+// (Zapier app).
 //
 // Each is its own npm package (its own lockfile, the folder that goes to raycast/extensions or to Zapier), but the gate
 // every merge needs is scripts/verify.sh, which runs only each repo's own typecheck, lint and test scripts and has no
@@ -23,14 +25,24 @@ export function needsTempHome(dir, script) {
   return dir === "raycast" && script === "build";
 }
 
+/**
+ * The extension reads its preferences through Raycast's generated `Preferences` type (the store's rule, PR #33938's
+ * review), declared in raycast/raycast-env.d.ts. That file is git-ignored and written by `ray build`, so a fresh
+ * checkout or worktree has none, and typecheck runs before lint's build in verify.sh. Typechecking either package
+ * builds raycast first when the file is missing.
+ */
+export function needsEnvTypes(dir, script) {
+  return (dir === "raycast" || dir === "raycast-test") && script === "typecheck";
+}
+
 function main() {
   const [name, ...scripts] = process.argv.slice(2);
   if (!name || scripts.length === 0) {
     console.error("usage: node scripts/nested.mjs <dir> <script>...");
     process.exit(2);
   }
-  if (!["raycast", "zapier"].includes(name)) {
-    console.error(`nested: unknown package "${name}" (raycast or zapier)`);
+  if (!["raycast", "raycast-test", "zapier"].includes(name)) {
+    console.error(`nested: unknown package "${name}" (raycast, raycast-test or zapier)`);
     process.exit(2);
   }
   const dir = join(dirname(fileURLToPath(import.meta.url)), "..", name);
@@ -47,7 +59,33 @@ function main() {
     if (!run(["ci", "--ignore-scripts"])) fail("npm ci --ignore-scripts");
   }
 
+  const raycastDir = join(dir, "..", "raycast");
+  const buildRaycast = () => {
+    const home = mkdtempSync(join(tmpdir(), "raycast-home-"));
+    let ok;
+    try {
+      if (!existsSync(join(raycastDir, "node_modules")))
+        spawnSync("npm", ["ci", "--ignore-scripts"], {
+          cwd: raycastDir,
+          stdio: "inherit",
+        });
+      ok =
+        spawnSync("npm", ["run", "--silent", "build"], {
+          cwd: raycastDir,
+          env: { ...process.env, HOME: home },
+          stdio: "inherit",
+        }).status === 0;
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+    return ok;
+  };
+
   for (const script of scripts) {
+    if (needsEnvTypes(name, script) && !existsSync(join(raycastDir, "raycast-env.d.ts"))) {
+      console.log(`\n\u001b[1m▶ raycast: build (writes raycast-env.d.ts for ${name}'s typecheck)\u001b[0m`);
+      if (!buildRaycast()) fail("raycast build for raycast-env.d.ts");
+    }
     console.log(`\n\u001b[1m▶ ${name}: ${script}\u001b[0m`);
     let home;
     let ok;

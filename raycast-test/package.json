@@ -1,0 +1,15 @@
+{
+  "name": "linkonda-raycast-test",
+  "private": true,
+  "description": "Tests for the Raycast extension in ../raycast. They live outside that folder because raycast/extensions takes a first extension without test files or tooling (PR #33938 review, 2026-11-24).",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "typescript": "5.9.3",
+    "vitest": "5.1.1"
+  }
+}

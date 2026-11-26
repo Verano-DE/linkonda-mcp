@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { API_BASE_URL, createShortLink, type ShortenResult } from "../src/lib/api";
-import { failureMarkdown, N1, N2, N3, N4, N5, N6, nextStep, TITLES } from "../src/lib/view";
+import { API_BASE_URL, createShortLink, type ShortenResult } from "../../raycast/src/lib/api";
+import { failureMarkdown, N1, N2, N3, N4, N5, N6, nextStep, TITLES } from "../../raycast/src/lib/view";
 
 type Failure = Extract<ShortenResult, { ok: false }>;
 

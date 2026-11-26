@@ -26,9 +26,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json && chmod +x dist/index.js",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit && node scripts/nested.mjs raycast typecheck && node scripts/nested.mjs zapier typecheck",
+    "typecheck": "tsc --noEmit && node scripts/nested.mjs raycast typecheck && node scripts/nested.mjs raycast-test typecheck && node scripts/nested.mjs zapier typecheck",
     "lint": "node scripts/nested.mjs raycast check build && node scripts/nested.mjs zapier build",
-    "test": "vitest run --dir src && node scripts/nested.mjs raycast test && node scripts/nested.mjs zapier test",
+    "test": "vitest run --dir src && node scripts/nested.mjs raycast-test test && node scripts/nested.mjs zapier test",
     "check:glama-image": "node scripts/check-glama-image.mjs",
     "prepack": "npm run build"
   },
